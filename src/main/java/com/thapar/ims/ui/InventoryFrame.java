@@ -56,9 +56,9 @@ public class InventoryFrame extends JFrame {
     private static final String VIEW_HISTORY = "SALES_HISTORY";
 
     // Nav Buttons
-    private final ModernButton navInventoryBtn = new ModernButton("📦 Stock Inventory", ModernButton.Variant.PRIMARY);
-    private final ModernButton navSaleBtn = new ModernButton("💳 Record New Sale", ModernButton.Variant.SECONDARY);
-    private final ModernButton navHistoryBtn = new ModernButton("📜 Sales History", ModernButton.Variant.SECONDARY);
+    private final ModernButton navInventoryBtn = new ModernButton("Stock Inventory", ModernButton.Variant.PRIMARY);
+    private final ModernButton navSaleBtn = new ModernButton("Record New Sale", ModernButton.Variant.SECONDARY);
+    private final ModernButton navHistoryBtn = new ModernButton("Sales History", ModernButton.Variant.SECONDARY);
 
     // ==========================================
     // 1. INVENTORY MANAGEMENT VIEW COMPONENTS
@@ -124,7 +124,7 @@ public class InventoryFrame extends JFrame {
     private final JLabel saleTotalAmountLabel = new JLabel("Rs 0.00");
     private final JLabel saleRemainingStockLabel = new JLabel("Remaining Stock: -");
 
-    private final ModernButton completeSaleBtn = new ModernButton("💳 Complete Sale & Deduct Stock", ModernButton.Variant.PRIMARY);
+    private final ModernButton completeSaleBtn = new ModernButton("Complete Sale & Deduct Stock", ModernButton.Variant.PRIMARY);
     private final ModernButton clearSaleBtn = new ModernButton("Clear Selection", ModernButton.Variant.SECONDARY);
 
     private Product selectedProductForSale = null;
@@ -958,7 +958,7 @@ public class InventoryFrame extends JFrame {
             Sale sale = service.recordSale(selectedProductForSale.getId(), qty, unitPrice, notes, removeIfZero);
 
             JOptionPane.showMessageDialog(this,
-                    "✅ Sale Completed Successfully!\n\n"
+                    "Sale Completed Successfully!\n\n"
                             + "Sale Transaction ID: #" + sale.getId() + "\n"
                             + "Product: " + sale.getProductName() + "\n"
                             + "Quantity Sold: " + sale.getQuantity() + "\n"

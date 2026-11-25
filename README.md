@@ -49,13 +49,13 @@ The DMG installer is created in `dist/desktop-release/`. Open it and drag the ap
 
 ## What to click in a demo
 
-1. **📦 Stock Inventory**: Full product ledger. Click any item to fill the edit form.
-2. **💳 Record New Sale**:
+1. **Stock Inventory**: Full product ledger. Click any item to fill the edit form.
+2. **Record New Sale**:
    - Click a product from the list (e.g. Notebook or Milk).
    - Enter the quantity to sell (e.g. `2`). Notice the real-time calculation and stock preview.
    - Click **Complete Sale & Deduct Stock**. Confirm the sale.
    - Switch back to **Stock Inventory** — notice the stock has been automatically deducted in the database!
-3. **📜 Sales History**:
+3. **Sales History**:
    - View your newly completed transaction with timestamp and revenue.
    - Check the top header stats: Total Sales Revenue and Units Sold have updated live.
    - Click **Export Sales Report** to export CSV and text sales summaries.
