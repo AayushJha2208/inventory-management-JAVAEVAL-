@@ -68,9 +68,12 @@ public class App {
         System.out.println("Report files: " + service.exportReports());
         for (Product product : service.getAllProducts()) {
             if ("Demo Soap".equals(product.getName())) {
+                var sale = service.recordSale(product.getId(), 2, 30.0, "Check sale", false);
+                System.out.println("Recorded check sale: " + sale);
                 service.deleteProduct(product.getId());
             }
         }
+        System.out.println("Sales report files: " + service.exportSalesReport());
         System.out.println("CHECK OK");
     }
 }

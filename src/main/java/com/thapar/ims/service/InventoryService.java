@@ -2,6 +2,7 @@ package com.thapar.ims.service;
 
 import com.thapar.ims.exception.InventoryException;
 import com.thapar.ims.model.Product;
+import com.thapar.ims.model.Sale;
 
 import java.util.List;
 
@@ -27,4 +28,18 @@ public interface InventoryService {
     List<Product> getLowStockProducts() throws InventoryException;
 
     List<String> exportReports() throws InventoryException;
+
+    // --- Sales Tracking ---
+
+    Sale recordSale(int productId, int quantity, double unitPrice, String notes, boolean removeIfZero) throws InventoryException;
+
+    List<Sale> getAllSales() throws InventoryException;
+
+    List<Sale> searchSales(String text) throws InventoryException;
+
+    double getTotalSalesRevenue() throws InventoryException;
+
+    int getTotalItemsSold() throws InventoryException;
+
+    List<String> exportSalesReport() throws InventoryException;
 }

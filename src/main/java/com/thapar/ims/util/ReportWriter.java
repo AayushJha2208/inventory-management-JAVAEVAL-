@@ -1,6 +1,7 @@
 package com.thapar.ims.util;
 
 import com.thapar.ims.model.Product;
+import com.thapar.ims.model.Sale;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -31,6 +32,74 @@ public final class ReportWriter {
         paths.add(writeCsv(products, new File(folder, "inventory-report.csv")));
         paths.add(writeHtml(products, new File(folder, "inventory-report.html")));
         return paths;
+    }
+
+    public static List<String> writeSalesReport(List<Sale> sales) throws IOException {
+        File folder = AppPaths.reportsDirectory().toFile();
+        Files.createDirectories(folder.toPath());
+
+        List<String> paths = new ArrayList<>();
+        paths.add(writeSalesText(sales, new File(folder, "sales-history-report.txt")));
+        paths.add(writeSalesCsv(sales, new File(folder, "sales-history-report.csv")));
+        return paths;
+    }
+
+    private static String writeSalesText(List<Sale> sales, File file) throws IOException {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
+            writer.write("========================================================================================\n");
+            writer.write("                             SALES TRANSACTIONS HISTORY REPORT                          \n");
+            writer.write("========================================================================================\n");
+            writer.write("Generated on: " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) + "\n\n");
+
+            writer.write(String.format("%-8s | %-19s | %-20s | %-12s | %5s | %10s | %12s | %-15s\n",
+                    "Sale ID", "Date & Time", "Product Name", "Category", "Qty", "Unit Price", "Total (Rs)", "Notes"));
+            writer.write("-----------------------------------------------------------------------------------------------------------\n");
+
+            double totalRevenue = 0;
+            int totalUnits = 0;
+
+            for (Sale s : sales) {
+                totalRevenue += s.getTotalAmount();
+                totalUnits += s.getQuantity();
+
+                writer.write(String.format("%-8d | %-19s | %-20s | %-12s | %5d | %10.2f | %12.2f | %-15s\n",
+                        s.getId(),
+                        s.getSaleDate(),
+                        truncate(s.getProductName(), 20),
+                        truncate(s.getCategory() == null ? "" : s.getCategory(), 12),
+                        s.getQuantity(),
+                        s.getUnitPrice(),
+                        s.getTotalAmount(),
+                        truncate(s.getNotes(), 15)));
+            }
+
+            writer.write("-----------------------------------------------------------------------------------------------------------\n");
+            writer.write(String.format("Total Sales Orders: %d  |  Total Units Sold: %d  |  Total Revenue: Rs %.2f\n",
+                    sales.size(), totalUnits, totalRevenue));
+            writer.write("===========================================================================================================\n");
+        }
+        return file.getAbsolutePath();
+    }
+
+    private static String writeSalesCsv(List<Sale> sales, File file) throws IOException {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
+            writer.write("Sale ID,Date Time,Product Name,Category,Quantity,Unit Price (Rs),Total Amount (Rs),Notes\n");
+            double totalRevenue = 0;
+            for (Sale s : sales) {
+                totalRevenue += s.getTotalAmount();
+                writer.write(String.format("%d,\"%s\",\"%s\",\"%s\",%d,%.2f,%.2f,\"%s\"\n",
+                        s.getId(),
+                        s.getSaleDate(),
+                        escapeCsv(s.getProductName()),
+                        escapeCsv(s.getCategory()),
+                        s.getQuantity(),
+                        s.getUnitPrice(),
+                        s.getTotalAmount(),
+                        escapeCsv(s.getNotes())));
+            }
+            writer.write(String.format("\"TOTAL\",,\"\",\"\",0,0,%.2f,\"\"\n", totalRevenue));
+        }
+        return file.getAbsolutePath();
     }
 
     private static String writeText(List<Product> products, File file) throws IOException {

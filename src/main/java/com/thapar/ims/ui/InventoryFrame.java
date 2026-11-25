@@ -2,10 +2,12 @@ package com.thapar.ims.ui;
 
 import com.thapar.ims.exception.InventoryException;
 import com.thapar.ims.model.Product;
+import com.thapar.ims.model.Sale;
 import com.thapar.ims.service.InventoryService;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -21,6 +23,7 @@ import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
+import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
@@ -30,19 +33,36 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Modern Inventory Management System window.
- * Balanced layout inspired by the enterprise Tailwind web dashboard.
+ * Modern Inventory & Sales Management System desktop window.
+ * Features:
+ * - Stock Inventory Ledger & SKU Management
+ * - New Sales Page (Record Sales & auto-deduct/remove from database)
+ * - Sales History Ledger & Revenue Analytics
  */
 public class InventoryFrame extends JFrame {
 
     private final InventoryService service;
 
-    // Form inputs (fixed height, modern placeholders)
+    // Card Layout Views
+    private final CardLayout cardLayout = new CardLayout();
+    private final JPanel mainCardContainer = new JPanel(cardLayout);
+
+    private static final String VIEW_INVENTORY = "INVENTORY";
+    private static final String VIEW_SALE = "RECORD_SALE";
+    private static final String VIEW_HISTORY = "SALES_HISTORY";
+
+    // Nav Buttons
+    private final ModernButton navInventoryBtn = new ModernButton("📦 Stock Inventory", ModernButton.Variant.PRIMARY);
+    private final ModernButton navSaleBtn = new ModernButton("💳 Record New Sale", ModernButton.Variant.SECONDARY);
+    private final ModernButton navHistoryBtn = new ModernButton("📜 Sales History", ModernButton.Variant.SECONDARY);
+
+    // ==========================================
+    // 1. INVENTORY MANAGEMENT VIEW COMPONENTS
+    // ==========================================
     private final PlaceholderTextField nameField = new PlaceholderTextField("e.g. Wireless Mouse");
     private final JComboBox<String> categoryBox = new JComboBox<>(
             new String[]{"Stationery", "Grocery", "Electronics", "Hardware", "Office Supplies", "Other"});
@@ -52,34 +72,87 @@ public class InventoryFrame extends JFrame {
     private final JComboBox<String> typeBox = new JComboBox<>(new String[]{"Regular", "Perishable"});
     private final PlaceholderTextField expiryField = new PlaceholderTextField("YYYY-MM-DD");
 
-    // Search bar
     private final PlaceholderTextField searchField = new PlaceholderTextField("Search by ID, name, category...");
 
-    // Action buttons
     private final ModernButton addButton = new ModernButton("Add Item", ModernButton.Variant.PRIMARY);
     private final ModernButton updateButton = new ModernButton("Update", ModernButton.Variant.SECONDARY);
     private final ModernButton deleteButton = new ModernButton("Delete", ModernButton.Variant.DANGER);
     private final ModernButton clearButton = new ModernButton("Clear Form", ModernButton.Variant.SECONDARY);
 
-    // Filter toolbar buttons
     private final ModernButton showAllBtn = new ModernButton("Show All", ModernButton.Variant.PRIMARY);
     private final ModernButton lowStockBtn = new ModernButton("Low Stock", ModernButton.Variant.WARNING);
     private final ModernButton exportBtn = new ModernButton("Export Report", ModernButton.Variant.SECONDARY);
 
-    // Header stats labels
-    private final JLabel totalValueLabel = new JLabel("Rs 0.00");
-    private final JLabel skuCountLabel = new JLabel("0 Items");
-    private final JLabel lowStockCountLabel = new JLabel("0 Alerts");
-
-    // Form badges & calculated preview
     private final BadgeLabel formModeBadge = new BadgeLabel("Create Mode", new Color(5, 150, 105), Color.WHITE, null);
     private final JLabel formHeading = new JLabel("Item Management");
     private final JLabel formSubheading = new JLabel("Add new stock or edit the selected item");
     private final JLabel previewValueLabel = new JLabel("Rs 0.00");
-
-    // Table & status labels
-    private final JLabel statusLabel = new JLabel("Ready");
     private final JLabel rowCountLabel = new JLabel("Showing 0 entries");
+
+    private final DefaultTableModel tableModel = new DefaultTableModel(
+            new String[]{"ID", "Item Name", "Category", "Price", "Qty", "Reorder", "Expiry", "Type", "Stock Value"}, 0) {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+    };
+    private final JTable table = new JTable(tableModel);
+
+    // ==========================================
+    // 2. RECORD NEW SALE VIEW COMPONENTS
+    // ==========================================
+    private final DefaultTableModel saleProductTableModel = new DefaultTableModel(
+            new String[]{"ID", "Product Name", "Category", "Price (Rs)", "Available Stock", "Status"}, 0) {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+    };
+    private final JTable saleProductTable = new JTable(saleProductTableModel);
+    private final PlaceholderTextField saleProductSearchField = new PlaceholderTextField("Search product to sell...");
+
+    private final JLabel saleSelectedProductName = new JLabel("No product selected");
+    private final BadgeLabel saleSelectedCategoryBadge = new BadgeLabel("None");
+    private final BadgeLabel saleStockBadge = new BadgeLabel("Stock: -", new Color(241, 245, 249), new Color(100, 116, 139), BORDER);
+
+    private final PlaceholderTextField saleQtyField = new PlaceholderTextField("1");
+    private final PlaceholderTextField saleUnitPriceField = new PlaceholderTextField("0.00");
+    private final PlaceholderTextField saleNotesField = new PlaceholderTextField("Customer name or invoice ref...");
+    private final JCheckBox saleDeductStockCheck = new JCheckBox("Deduct sold quantity from inventory database", true);
+    private final JCheckBox saleRemoveIfZeroCheck = new JCheckBox("Remove product from catalog if stock reaches 0", false);
+
+    private final JLabel saleTotalAmountLabel = new JLabel("Rs 0.00");
+    private final JLabel saleRemainingStockLabel = new JLabel("Remaining Stock: -");
+
+    private final ModernButton completeSaleBtn = new ModernButton("💳 Complete Sale & Deduct Stock", ModernButton.Variant.PRIMARY);
+    private final ModernButton clearSaleBtn = new ModernButton("Clear Selection", ModernButton.Variant.SECONDARY);
+
+    private Product selectedProductForSale = null;
+
+    // ==========================================
+    // 3. SALES HISTORY VIEW COMPONENTS
+    // ==========================================
+    private final DefaultTableModel salesHistoryTableModel = new DefaultTableModel(
+            new String[]{"Sale ID", "Date & Time", "Product Name", "Category", "Qty Sold", "Unit Price", "Total (Rs)", "Notes"}, 0) {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+    };
+    private final JTable salesHistoryTable = new JTable(salesHistoryTableModel);
+    private final PlaceholderTextField salesHistorySearchField = new PlaceholderTextField("Search sales by product, category, notes...");
+    private final ModernButton exportSalesBtn = new ModernButton("Export Sales Report", ModernButton.Variant.SECONDARY);
+    private final ModernButton refreshSalesBtn = new ModernButton("Refresh", ModernButton.Variant.SECONDARY);
+    private final JLabel salesHistorySummaryLabel = new JLabel("0 transactions recorded");
+
+    // ==========================================
+    // HEADER STAT LABELS
+    // ==========================================
+    private final JLabel totalValueLabel = new JLabel("Rs 0.00");
+    private final JLabel totalRevenueLabel = new JLabel("Rs 0.00");
+    private final JLabel totalSoldLabel = new JLabel("0 Units");
+    private final JLabel lowStockCountLabel = new JLabel("0 Alerts");
+    private final JLabel statusLabel = new JLabel("Ready");
 
     // Theme color constants
     public static final Color GREEN = new Color(22, 101, 52);
@@ -91,48 +164,41 @@ public class InventoryFrame extends JFrame {
     public static final Color MUTED = new Color(100, 116, 139);
     public static final Color WARNING = new Color(180, 83, 9);
 
-    private final DefaultTableModel tableModel = new DefaultTableModel(
-            new String[]{"ID", "Item Name", "Category", "Price", "Qty", "Reorder", "Expiry", "Type", "Stock Value"}, 0) {
-        @Override
-        public boolean isCellEditable(int row, int column) {
-            return false;
-        }
-    };
-    private final JTable table = new JTable(tableModel);
-
-    // State
-    private String activeFilter = "all"; // "all" or "lowstock"
+    private String activeFilter = "all";
 
     public InventoryFrame(InventoryService service) {
-        super("Inventory Management System");
+        super("Inventory Management System & Sales Register");
         this.service = service;
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1380, 840);
-        setMinimumSize(new Dimension(1120, 720));
+        setSize(1400, 860);
+        setMinimumSize(new Dimension(1150, 750));
         setLocationRelativeTo(null);
 
         buildUi();
         setupEvents();
 
-        // Initial load
+        // Initial Data Load
         setFormMode(false);
-        loadTableSafe(() -> service.getAllProducts(), "System ready. Loaded all inventory items.");
+        refreshAllData();
     }
 
     private void buildUi() {
         getContentPane().setBackground(SURFACE);
         setLayout(new BorderLayout());
 
-        // 1. Header
-        add(headerPanel(), BorderLayout.NORTH);
+        // 1. Top Section: Global Header + Navigation Bar
+        JPanel topContainer = new JPanel(new BorderLayout());
+        topContainer.setOpaque(false);
+        topContainer.add(headerPanel(), BorderLayout.NORTH);
+        topContainer.add(navBar(), BorderLayout.SOUTH);
+        add(topContainer, BorderLayout.NORTH);
 
-        // 2. Main Workspace (Ledger on Center/Left, Form on East/Right)
-        JPanel workspace = new JPanel(new BorderLayout(20, 0));
-        workspace.setBackground(SURFACE);
-        workspace.setBorder(BorderFactory.createEmptyBorder(18, 24, 14, 24));
-        workspace.add(ledgerPanel(), BorderLayout.CENTER);
-        workspace.add(formPanel(), BorderLayout.EAST);
-        add(workspace, BorderLayout.CENTER);
+        // 2. Main Center Card Container
+        mainCardContainer.setBackground(SURFACE);
+        mainCardContainer.add(inventoryViewPanel(), VIEW_INVENTORY);
+        mainCardContainer.add(recordSaleViewPanel(), VIEW_SALE);
+        mainCardContainer.add(salesHistoryViewPanel(), VIEW_HISTORY);
+        add(mainCardContainer, BorderLayout.CENTER);
 
         // 3. Status Bar
         JPanel statusBar = new JPanel(new BorderLayout());
@@ -152,27 +218,26 @@ public class InventoryFrame extends JFrame {
         header.setBackground(Color.WHITE);
         header.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER),
-                BorderFactory.createEmptyBorder(14, 24, 14, 24)
+                BorderFactory.createEmptyBorder(12, 24, 12, 24)
         ));
 
         // Brand on Left
         JPanel brand = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 0));
         brand.setOpaque(false);
 
-        // Icon Box
         BadgeLabel iconBadge = new BadgeLabel("IMS", GREEN, Color.WHITE, null);
         iconBadge.setFont(new Font("SansSerif", Font.BOLD, 13));
         iconBadge.setPreferredSize(new Dimension(42, 42));
 
         JPanel titleBlock = new JPanel(new GridLayout(2, 1, 0, 3));
         titleBlock.setOpaque(false);
-        JLabel title = new JLabel("Inventory Management System");
+        JLabel title = new JLabel("Inventory & Sales Management");
         title.setFont(new Font("SansSerif", Font.BOLD, 20));
         title.setForeground(TEXT);
 
         JPanel subtitleRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         subtitleRow.setOpaque(false);
-        JLabel subtitle = new JLabel("Enterprise Stock & Warehouse Control");
+        JLabel subtitle = new JLabel("Enterprise Stock Control & Sales Tracking");
         subtitle.setFont(new Font("SansSerif", Font.PLAIN, 12));
         subtitle.setForeground(MUTED);
 
@@ -195,15 +260,61 @@ public class InventoryFrame extends JFrame {
         header.add(brand, BorderLayout.WEST);
 
         // Stats on Right
-        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         rightPanel.setOpaque(false);
 
-        rightPanel.add(statCard("TOTAL VALUE", totalValueLabel, GREEN, PALE_GREEN));
-        rightPanel.add(statCard("SKU COUNT", skuCountLabel, ACCENT, new Color(236, 253, 245)));
+        rightPanel.add(statCard("TOTAL STOCK VALUE", totalValueLabel, GREEN, PALE_GREEN));
+        rightPanel.add(statCard("SALES REVENUE", totalRevenueLabel, ACCENT, new Color(236, 253, 245)));
+        rightPanel.add(statCard("UNITS SOLD", totalSoldLabel, new Color(13, 148, 136), new Color(240, 253, 250)));
         rightPanel.add(statCard("LOW STOCK", lowStockCountLabel, WARNING, new Color(255, 251, 235)));
 
         header.add(rightPanel, BorderLayout.EAST);
         return header;
+    }
+
+    private JPanel navBar() {
+        JPanel nav = new JPanel(new BorderLayout());
+        nav.setBackground(Color.WHITE);
+        nav.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER),
+                BorderFactory.createEmptyBorder(8, 24, 8, 24)
+        ));
+
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        buttons.setOpaque(false);
+
+        navInventoryBtn.setActive(true);
+        navSaleBtn.setActive(false);
+        navHistoryBtn.setActive(false);
+
+        navInventoryBtn.addActionListener(e -> switchView(VIEW_INVENTORY));
+        navSaleBtn.addActionListener(e -> switchView(VIEW_SALE));
+        navHistoryBtn.addActionListener(e -> switchView(VIEW_HISTORY));
+
+        buttons.add(navInventoryBtn);
+        buttons.add(navSaleBtn);
+        buttons.add(navHistoryBtn);
+
+        nav.add(buttons, BorderLayout.WEST);
+        return nav;
+    }
+
+    private void switchView(String viewName) {
+        cardLayout.show(mainCardContainer, viewName);
+        navInventoryBtn.setActive(VIEW_INVENTORY.equals(viewName));
+        navSaleBtn.setActive(VIEW_SALE.equals(viewName));
+        navHistoryBtn.setActive(VIEW_HISTORY.equals(viewName));
+
+        if (VIEW_SALE.equals(viewName)) {
+            refreshSaleProductsTable();
+            status("Sales Point of Sale opened. Choose a product to sell.");
+        } else if (VIEW_HISTORY.equals(viewName)) {
+            refreshSalesHistoryTable();
+            status("Sales History Ledger opened.");
+        } else {
+            status("Stock Inventory Ledger view.");
+        }
+        updateDashboardStats();
     }
 
     private JPanel statCard(String heading, JLabel value, Color color, Color bg) {
@@ -211,13 +322,13 @@ public class InventoryFrame extends JFrame {
         card.setBackground(bg);
         card.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(BORDER),
-                BorderFactory.createEmptyBorder(6, 14, 6, 14)
+                BorderFactory.createEmptyBorder(5, 12, 5, 12)
         ));
         JLabel label = new JLabel(heading);
-        label.setFont(new Font("SansSerif", Font.BOLD, 10));
+        label.setFont(new Font("SansSerif", Font.BOLD, 9));
         label.setForeground(MUTED);
 
-        value.setFont(new Font("SansSerif", Font.BOLD, 15));
+        value.setFont(new Font("SansSerif", Font.BOLD, 14));
         value.setForeground(color);
 
         card.add(label);
@@ -225,11 +336,23 @@ public class InventoryFrame extends JFrame {
         return card;
     }
 
+    // =========================================================================
+    // VIEW 1: INVENTORY MANAGEMENT PANEL
+    // =========================================================================
+    private JPanel inventoryViewPanel() {
+        JPanel workspace = new JPanel(new BorderLayout(20, 0));
+        workspace.setBackground(SURFACE);
+        workspace.setBorder(BorderFactory.createEmptyBorder(16, 24, 14, 24));
+        workspace.add(ledgerPanel(), BorderLayout.CENTER);
+        workspace.add(formPanel(), BorderLayout.EAST);
+        return workspace;
+    }
+
     private JPanel ledgerPanel() {
         JPanel ledger = new JPanel(new BorderLayout(0, 14));
         ledger.setBackground(SURFACE);
 
-        // 1. Toolbar (Search on left, Filters on right)
+        // Toolbar
         JPanel toolbar = new JPanel(new BorderLayout(14, 0));
         toolbar.setBackground(Color.WHITE);
         toolbar.setBorder(BorderFactory.createCompoundBorder(
@@ -290,12 +413,11 @@ public class InventoryFrame extends JFrame {
         toolbar.add(searchGroup, BorderLayout.WEST);
         toolbar.add(filterGroup, BorderLayout.EAST);
 
-        // 2. Table Ledger Card
+        // Table Ledger Card
         JPanel tableCard = new JPanel(new BorderLayout());
         tableCard.setBackground(Color.WHITE);
         tableCard.setBorder(BorderFactory.createLineBorder(BORDER));
 
-        // Card Caption
         JPanel caption = new JPanel(new BorderLayout());
         caption.setBackground(PALE_GREEN);
         caption.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
@@ -311,18 +433,17 @@ public class InventoryFrame extends JFrame {
         caption.add(hint, BorderLayout.EAST);
         tableCard.add(caption, BorderLayout.NORTH);
 
-        // Table setup
-        setupTable();
+        setupInventoryTable();
         tableCard.add(new JScrollPane(table), BorderLayout.CENTER);
 
-        // Table Footer
+        // Footer
         JPanel tableFooter = new JPanel(new BorderLayout());
         tableFooter.setBackground(Color.WHITE);
         tableFooter.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(1, 0, 0, 0, BORDER),
                 BorderFactory.createEmptyBorder(8, 16, 8, 16)
         ));
-        JLabel footerNote = new JLabel("Reports support PDF, Word, and Excel export");
+        JLabel footerNote = new JLabel("Inventory database backed by SQLite");
         footerNote.setFont(new Font("SansSerif", Font.PLAIN, 12));
         footerNote.setForeground(MUTED);
 
@@ -338,7 +459,7 @@ public class InventoryFrame extends JFrame {
         return ledger;
     }
 
-    private void setupTable() {
+    private void setupInventoryTable() {
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.setRowHeight(36);
         table.setFont(new Font("SansSerif", Font.PLAIN, 13));
@@ -354,13 +475,11 @@ public class InventoryFrame extends JFrame {
         table.getTableHeader().setForeground(GREEN);
         table.getTableHeader().setPreferredSize(new Dimension(0, 38));
 
-        // Column widths
         int[] widths = {55, 180, 110, 85, 75, 80, 100, 100, 110};
         for (int i = 0; i < widths.length && i < table.getColumnCount(); i++) {
             table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         }
 
-        // Custom renderers
         table.getColumnModel().getColumn(0).setCellRenderer(new CenterRenderer());
         table.getColumnModel().getColumn(2).setCellRenderer(new CategoryBadgeRenderer());
         table.getColumnModel().getColumn(3).setCellRenderer(new CurrencyRenderer());
@@ -386,7 +505,7 @@ public class InventoryFrame extends JFrame {
                 BorderFactory.createEmptyBorder(18, 20, 18, 20)
         ));
 
-        // Form Header
+        // Heading
         JPanel heading = new JPanel(new BorderLayout());
         heading.setOpaque(false);
 
@@ -409,7 +528,7 @@ public class InventoryFrame extends JFrame {
         ));
         formCard.add(heading, BorderLayout.NORTH);
 
-        // Fields Container using GridBagLayout with FIXED heights
+        // Fields
         JPanel fieldsPanel = new JPanel(new GridBagLayout());
         fieldsPanel.setOpaque(false);
         GridBagConstraints gbc = new GridBagConstraints();
@@ -480,7 +599,7 @@ public class InventoryFrame extends JFrame {
         gbc.insets = new Insets(6, 0, 12, 0);
         fieldsPanel.add(actions, gbc);
 
-        // 8. Vertical Glue to absorb extra space so fields never stretch!
+        // 8. Vertical Glue
         gbc.gridy = row++;
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.BOTH;
@@ -488,6 +607,624 @@ public class InventoryFrame extends JFrame {
 
         formCard.add(fieldsPanel, BorderLayout.CENTER);
         return formCard;
+    }
+
+    // =========================================================================
+    // VIEW 2: NEW SALES PAGE (RECORD SALE & DEDUCT/REMOVE FROM DATABASE)
+    // =========================================================================
+    private JPanel recordSaleViewPanel() {
+        JPanel panel = new JPanel(new BorderLayout(20, 0));
+        panel.setBackground(SURFACE);
+        panel.setBorder(BorderFactory.createEmptyBorder(16, 24, 14, 24));
+
+        // LEFT: Products Browser to select item to sell
+        JPanel productBrowserCard = new JPanel(new BorderLayout(0, 12));
+        productBrowserCard.setBackground(Color.WHITE);
+        productBrowserCard.setBorder(BorderFactory.createLineBorder(BORDER));
+
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(PALE_GREEN);
+        header.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
+
+        JLabel title = new JLabel("Available Inventory for Sale");
+        title.setFont(new Font("SansSerif", Font.BOLD, 15));
+        title.setForeground(TEXT);
+
+        JLabel subtitle = new JLabel("Click any product row to populate sales terminal");
+        subtitle.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        subtitle.setForeground(MUTED);
+
+        header.add(title, BorderLayout.WEST);
+        header.add(subtitle, BorderLayout.EAST);
+        productBrowserCard.add(header, BorderLayout.NORTH);
+
+        // Search Bar for sales products
+        JPanel searchBar = new JPanel(new BorderLayout(8, 0));
+        searchBar.setBackground(Color.WHITE);
+        searchBar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER),
+                BorderFactory.createEmptyBorder(8, 14, 8, 14)
+        ));
+        saleProductSearchField.setPreferredSize(new Dimension(300, 36));
+        saleProductSearchField.getDocument().addDocumentListener(new DocumentListener() {
+            private void update() { filterSaleProductsTable(); }
+            @Override public void insertUpdate(DocumentEvent e) { update(); }
+            @Override public void removeUpdate(DocumentEvent e) { update(); }
+            @Override public void changedUpdate(DocumentEvent e) { update(); }
+        });
+
+        searchBar.add(new JLabel("Quick Search: "), BorderLayout.WEST);
+        searchBar.add(saleProductSearchField, BorderLayout.CENTER);
+        productBrowserCard.add(searchBar, BorderLayout.CENTER);
+
+        // Table
+        setupSaleProductTable();
+        JPanel tableWrap = new JPanel(new BorderLayout());
+        tableWrap.add(searchBar, BorderLayout.NORTH);
+        tableWrap.add(new JScrollPane(saleProductTable), BorderLayout.CENTER);
+        productBrowserCard.add(tableWrap, BorderLayout.CENTER);
+
+        // RIGHT: Sale Checkout Terminal Form
+        JPanel checkoutCard = new JPanel(new BorderLayout(0, 12));
+        checkoutCard.setBackground(Color.WHITE);
+        checkoutCard.setPreferredSize(new Dimension(420, 0));
+        checkoutCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER),
+                BorderFactory.createEmptyBorder(18, 20, 18, 20)
+        ));
+
+        // Checkout Header
+        JPanel checkHeader = new JPanel(new BorderLayout());
+        checkHeader.setOpaque(false);
+        checkHeader.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER),
+                BorderFactory.createEmptyBorder(0, 0, 14, 0)
+        ));
+
+        JPanel checkTitleBlock = new JPanel(new GridLayout(2, 1, 0, 3));
+        checkTitleBlock.setOpaque(false);
+        JLabel cTitle = new JLabel("Sales Terminal");
+        cTitle.setFont(new Font("SansSerif", Font.BOLD, 17));
+        cTitle.setForeground(TEXT);
+
+        JLabel cSub = new JLabel("Record transaction & update inventory stock");
+        cSub.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        cSub.setForeground(MUTED);
+
+        checkTitleBlock.add(cTitle);
+        checkTitleBlock.add(cSub);
+
+        BadgeLabel termBadge = new BadgeLabel("POS Active", ACCENT, Color.WHITE, null);
+
+        checkHeader.add(checkTitleBlock, BorderLayout.WEST);
+        checkHeader.add(termBadge, BorderLayout.EAST);
+        checkoutCard.add(checkHeader, BorderLayout.NORTH);
+
+        // Form Fields
+        JPanel cFields = new JPanel(new GridBagLayout());
+        cFields.setOpaque(false);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        gbc.gridx = 0;
+        gbc.insets = new Insets(0, 0, 12, 0);
+
+        int r = 0;
+
+        // Selected Product Card
+        JPanel selCard = new JPanel(new BorderLayout(8, 4));
+        selCard.setBackground(PALE_GREEN);
+        selCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(187, 247, 208)),
+                BorderFactory.createEmptyBorder(10, 12, 10, 12)
+        ));
+
+        saleSelectedProductName.setFont(new Font("SansSerif", Font.BOLD, 14));
+        saleSelectedProductName.setForeground(TEXT);
+
+        JPanel badgesRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        badgesRow.setOpaque(false);
+        badgesRow.add(saleSelectedCategoryBadge);
+        badgesRow.add(saleStockBadge);
+
+        selCard.add(saleSelectedProductName, BorderLayout.WEST);
+        selCard.add(badgesRow, BorderLayout.EAST);
+
+        gbc.gridy = r++;
+        cFields.add(fieldContainer("Selected Product", null, selCard), gbc);
+
+        // Quantity & Unit Price Grid
+        JPanel qtyPriceGrid = new JPanel(new GridLayout(1, 2, 10, 0));
+        qtyPriceGrid.setOpaque(false);
+        qtyPriceGrid.add(fieldContainer("Quantity to Sell *", "Units", saleQtyField));
+        qtyPriceGrid.add(fieldContainer("Unit Selling Price (Rs) *", "Unit Rate", saleUnitPriceField));
+
+        gbc.gridy = r++;
+        cFields.add(qtyPriceGrid, gbc);
+
+        // Customer / Notes
+        gbc.gridy = r++;
+        cFields.add(fieldContainer("Customer / Invoice Notes", "Optional reference", saleNotesField), gbc);
+
+        // Database Update Options
+        JPanel optionsPanel = new JPanel(new GridLayout(2, 1, 0, 6));
+        optionsPanel.setOpaque(false);
+        optionsPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER),
+                BorderFactory.createEmptyBorder(8, 10, 8, 10)
+        ));
+
+        saleDeductStockCheck.setFont(new Font("SansSerif", Font.BOLD, 12));
+        saleDeductStockCheck.setForeground(TEXT);
+        saleDeductStockCheck.setOpaque(false);
+
+        saleRemoveIfZeroCheck.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        saleRemoveIfZeroCheck.setForeground(MUTED);
+        saleRemoveIfZeroCheck.setOpaque(false);
+
+        optionsPanel.add(saleDeductStockCheck);
+        optionsPanel.add(saleRemoveIfZeroCheck);
+
+        gbc.gridy = r++;
+        cFields.add(optionsPanel, gbc);
+
+        // Total Sale Amount Preview Banner
+        JPanel salePreview = new JPanel(new BorderLayout());
+        salePreview.setBackground(new Color(236, 253, 245));
+        salePreview.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(167, 243, 208)),
+                BorderFactory.createEmptyBorder(10, 14, 10, 14)
+        ));
+
+        JPanel saleLeft = new JPanel(new GridLayout(2, 1, 0, 2));
+        saleLeft.setOpaque(false);
+        JLabel sLabel = new JLabel("TOTAL SALE AMOUNT:");
+        sLabel.setFont(new Font("SansSerif", Font.BOLD, 10));
+        sLabel.setForeground(MUTED);
+
+        saleTotalAmountLabel.setFont(new Font("SansSerif", Font.BOLD, 18));
+        saleTotalAmountLabel.setForeground(GREEN);
+
+        saleLeft.add(sLabel);
+        saleLeft.add(saleTotalAmountLabel);
+
+        saleRemainingStockLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
+        saleRemainingStockLabel.setForeground(MUTED);
+
+        salePreview.add(saleLeft, BorderLayout.WEST);
+        salePreview.add(saleRemainingStockLabel, BorderLayout.EAST);
+
+        gbc.gridy = r++;
+        cFields.add(salePreview, gbc);
+
+        // Action Buttons
+        JPanel saleBtns = new JPanel(new GridLayout(2, 1, 0, 8));
+        saleBtns.setOpaque(false);
+        completeSaleBtn.setPreferredSize(new Dimension(completeSaleBtn.getPreferredSize().width, 42));
+        saleBtns.add(completeSaleBtn);
+        saleBtns.add(clearSaleBtn);
+
+        gbc.gridy = r++;
+        gbc.insets = new Insets(8, 0, 12, 0);
+        cFields.add(saleBtns, gbc);
+
+        // Glue
+        gbc.gridy = r++;
+        gbc.weighty = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
+        cFields.add(Box.createGlue(), gbc);
+
+        checkoutCard.add(cFields, BorderLayout.CENTER);
+
+        panel.add(productBrowserCard, BorderLayout.CENTER);
+        panel.add(checkoutCard, BorderLayout.EAST);
+        return panel;
+    }
+
+    private void setupSaleProductTable() {
+        saleProductTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        saleProductTable.setRowHeight(36);
+        saleProductTable.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        saleProductTable.setForeground(TEXT);
+        saleProductTable.setGridColor(BORDER);
+        saleProductTable.setShowVerticalLines(false);
+        saleProductTable.setFillsViewportHeight(true);
+        saleProductTable.setSelectionBackground(new Color(220, 252, 231));
+        saleProductTable.setSelectionForeground(GREEN);
+
+        saleProductTable.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 12));
+        saleProductTable.getTableHeader().setBackground(PALE_GREEN);
+        saleProductTable.getTableHeader().setForeground(GREEN);
+        saleProductTable.getTableHeader().setPreferredSize(new Dimension(0, 38));
+
+        int[] widths = {55, 200, 110, 95, 110, 95};
+        for (int i = 0; i < widths.length && i < saleProductTable.getColumnCount(); i++) {
+            saleProductTable.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
+        }
+
+        saleProductTable.getColumnModel().getColumn(0).setCellRenderer(new CenterRenderer());
+        saleProductTable.getColumnModel().getColumn(2).setCellRenderer(new CategoryBadgeRenderer());
+        saleProductTable.getColumnModel().getColumn(3).setCellRenderer(new CurrencyRenderer());
+        saleProductTable.getColumnModel().getColumn(4).setCellRenderer(new CenterRenderer());
+        saleProductTable.getColumnModel().getColumn(5).setCellRenderer(new StockStatusRenderer());
+
+        saleProductTable.getSelectionModel().addListSelectionListener(event -> {
+            if (!event.getValueIsAdjusting()) {
+                selectProductForSaleFromRow();
+            }
+        });
+    }
+
+    private void selectProductForSaleFromRow() {
+        int row = saleProductTable.getSelectedRow();
+        if (row < 0) return;
+
+        int id = Integer.parseInt(String.valueOf(saleProductTableModel.getValueAt(row, 0)));
+        try {
+            Product p = service.searchById(id);
+            if (p != null) {
+                selectedProductForSale = p;
+                saleSelectedProductName.setText("#" + p.getId() + " " + p.getName());
+                saleSelectedCategoryBadge.setText(p.getCategory());
+                saleStockBadge.setText("Stock: " + p.getQuantity());
+
+                if (p.getQuantity() <= 0) {
+                    saleStockBadge.setBadgeColors(new Color(254, 226, 226), new Color(220, 38, 38), new Color(252, 165, 165));
+                } else if (p.isLowStock()) {
+                    saleStockBadge.setBadgeColors(new Color(254, 243, 199), WARNING, new Color(252, 211, 77));
+                } else {
+                    saleStockBadge.setBadgeColors(new Color(236, 253, 245), ACCENT, new Color(167, 243, 208));
+                }
+
+                saleUnitPriceField.setText(String.format("%.2f", p.getPrice()));
+                saleQtyField.setText("1");
+                updateSaleCalculation();
+            }
+        } catch (InventoryException ex) {
+            showError("Could not load product: " + ex.getMessage());
+        }
+    }
+
+    private void updateSaleCalculation() {
+        if (selectedProductForSale == null) {
+            saleTotalAmountLabel.setText("Rs 0.00");
+            saleRemainingStockLabel.setText("Remaining Stock: -");
+            return;
+        }
+
+        try {
+            int qty = Integer.parseInt(saleQtyField.getText().trim());
+            double price = Double.parseDouble(saleUnitPriceField.getText().trim());
+
+            if (qty <= 0 || price < 0) {
+                saleTotalAmountLabel.setText("Rs 0.00");
+                return;
+            }
+
+            double total = qty * price;
+            saleTotalAmountLabel.setText(String.format("Rs %.2f", total));
+
+            int remaining = selectedProductForSale.getQuantity() - qty;
+            if (remaining < 0) {
+                saleRemainingStockLabel.setText("⚠️ EXCEEDS STOCK by " + Math.abs(remaining));
+                saleRemainingStockLabel.setForeground(new Color(220, 38, 38));
+            } else {
+                saleRemainingStockLabel.setText("Remaining: " + remaining + " units");
+                saleRemainingStockLabel.setForeground(remaining <= selectedProductForSale.getReorderLevel() ? WARNING : GREEN);
+            }
+        } catch (Exception ex) {
+            saleTotalAmountLabel.setText("Rs 0.00");
+            saleRemainingStockLabel.setText("Remaining: -");
+        }
+    }
+
+    private void onCompleteSale() {
+        if (selectedProductForSale == null) {
+            showError("Please select a product from the inventory list first.");
+            return;
+        }
+
+        try {
+            int qty = readInt(saleQtyField, "Quantity to sell");
+            double unitPrice = readDouble(saleUnitPriceField, "Unit selling price");
+            String notes = saleNotesField.getText().trim();
+            boolean removeIfZero = saleRemoveIfZeroCheck.isSelected();
+
+            if (qty <= 0) {
+                showError("Quantity to sell must be at least 1.");
+                return;
+            }
+
+            if (qty > selectedProductForSale.getQuantity()) {
+                showError("Insufficient stock! Available: " + selectedProductForSale.getQuantity()
+                        + ", requested: " + qty);
+                return;
+            }
+
+            // Confirm
+            int choice = JOptionPane.showConfirmDialog(this,
+                    "Complete sale of " + qty + "x \"" + selectedProductForSale.getName()
+                            + "\" for Rs " + String.format("%.2f", (qty * unitPrice)) + "?\n\n"
+                            + "This will immediately deduct " + qty + " units from the database."
+                            + (removeIfZero && (selectedProductForSale.getQuantity() - qty == 0) ? "\n(Item will be removed from catalog because stock reaches 0)" : ""),
+                    "Confirm Sale & Deduct Stock",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.QUESTION_MESSAGE);
+
+            if (choice != JOptionPane.YES_OPTION) {
+                return;
+            }
+
+            Sale sale = service.recordSale(selectedProductForSale.getId(), qty, unitPrice, notes, removeIfZero);
+
+            JOptionPane.showMessageDialog(this,
+                    "✅ Sale Completed Successfully!\n\n"
+                            + "Sale Transaction ID: #" + sale.getId() + "\n"
+                            + "Product: " + sale.getProductName() + "\n"
+                            + "Quantity Sold: " + sale.getQuantity() + "\n"
+                            + "Unit Price: Rs " + String.format("%.2f", sale.getUnitPrice()) + "\n"
+                            + "Total Amount: Rs " + String.format("%.2f", sale.getTotalAmount()) + "\n"
+                            + "Date: " + sale.getSaleDate() + "\n\n"
+                            + "Inventory database has been updated.",
+                    "Sale Confirmed",
+                    JOptionPane.INFORMATION_MESSAGE);
+
+            clearSaleForm();
+            refreshAllData();
+            status("Sale #" + sale.getId() + " recorded: " + sale.getProductName() + " (Rs " + String.format("%.2f", sale.getTotalAmount()) + ")");
+        } catch (InventoryException | NumberFormatException ex) {
+            showError(ex.getMessage());
+        }
+    }
+
+    private void clearSaleForm() {
+        selectedProductForSale = null;
+        saleSelectedProductName.setText("No product selected");
+        saleSelectedCategoryBadge.setText("None");
+        saleStockBadge.setText("Stock: -");
+        saleStockBadge.setBadgeColors(new Color(241, 245, 249), new Color(100, 116, 139), BORDER);
+
+        saleQtyField.setText("1");
+        saleUnitPriceField.setText("0.00");
+        saleNotesField.setText("");
+        saleTotalAmountLabel.setText("Rs 0.00");
+        saleRemainingStockLabel.setText("Remaining Stock: -");
+        saleProductTable.clearSelection();
+    }
+
+    private void refreshSaleProductsTable() {
+        try {
+            List<Product> products = service.getAllProducts();
+            saleProductTableModel.setRowCount(0);
+            for (Product p : products) {
+                String status = p.getQuantity() <= 0 ? "Out of Stock" : (p.isLowStock() ? "Low Stock" : "In Stock");
+                saleProductTableModel.addRow(new Object[]{
+                        p.getId(),
+                        p.getName(),
+                        p.getCategory(),
+                        String.format("%.2f", p.getPrice()),
+                        p.getQuantity(),
+                        status
+                });
+            }
+        } catch (InventoryException ex) {
+            showError("Could not load products for sale: " + ex.getMessage());
+        }
+    }
+
+    private void filterSaleProductsTable() {
+        String q = saleProductSearchField.getText().trim().toLowerCase();
+        try {
+            List<Product> products = service.getAllProducts();
+            saleProductTableModel.setRowCount(0);
+            for (Product p : products) {
+                if (q.isEmpty() || String.valueOf(p.getId()).equals(q)
+                        || p.getName().toLowerCase().contains(q)
+                        || p.getCategory().toLowerCase().contains(q)) {
+                    String status = p.getQuantity() <= 0 ? "Out of Stock" : (p.isLowStock() ? "Low Stock" : "In Stock");
+                    saleProductTableModel.addRow(new Object[]{
+                            p.getId(),
+                            p.getName(),
+                            p.getCategory(),
+                            String.format("%.2f", p.getPrice()),
+                            p.getQuantity(),
+                            status
+                    });
+                }
+            }
+        } catch (InventoryException ex) {
+            // ignore
+        }
+    }
+
+    // =========================================================================
+    // VIEW 3: SALES HISTORY PANEL
+    // =========================================================================
+    private JPanel salesHistoryViewPanel() {
+        JPanel panel = new JPanel(new BorderLayout(0, 14));
+        panel.setBackground(SURFACE);
+        panel.setBorder(BorderFactory.createEmptyBorder(16, 24, 14, 24));
+
+        // Toolbar
+        JPanel toolbar = new JPanel(new BorderLayout(14, 0));
+        toolbar.setBackground(Color.WHITE);
+        toolbar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER),
+                BorderFactory.createEmptyBorder(10, 14, 10, 14)
+        ));
+
+        // Search group
+        JPanel searchGroup = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        searchGroup.setOpaque(false);
+        salesHistorySearchField.setPreferredSize(new Dimension(300, 36));
+
+        ModernButton sSearchBtn = new ModernButton("Search", ModernButton.Variant.PRIMARY);
+        ModernButton sClearBtn = new ModernButton("Clear", ModernButton.Variant.SECONDARY);
+
+        sSearchBtn.addActionListener(e -> filterSalesHistory());
+        sClearBtn.addActionListener(e -> {
+            salesHistorySearchField.setText("");
+            refreshSalesHistoryTable();
+        });
+
+        searchGroup.add(salesHistorySearchField);
+        searchGroup.add(sSearchBtn);
+        searchGroup.add(sClearBtn);
+
+        // Actions on right
+        JPanel actionsGroup = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        actionsGroup.setOpaque(false);
+
+        exportSalesBtn.addActionListener(e -> onExportSales());
+        refreshSalesBtn.addActionListener(e -> refreshSalesHistoryTable());
+
+        actionsGroup.add(exportSalesBtn);
+        actionsGroup.add(refreshSalesBtn);
+
+        toolbar.add(searchGroup, BorderLayout.WEST);
+        toolbar.add(actionsGroup, BorderLayout.EAST);
+
+        // Table Card
+        JPanel tableCard = new JPanel(new BorderLayout());
+        tableCard.setBackground(Color.WHITE);
+        tableCard.setBorder(BorderFactory.createLineBorder(BORDER));
+
+        JPanel caption = new JPanel(new BorderLayout());
+        caption.setBackground(PALE_GREEN);
+        caption.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
+
+        JLabel title = new JLabel("Completed Sales Transactions Ledger");
+        title.setFont(new Font("SansSerif", Font.BOLD, 15));
+        title.setForeground(TEXT);
+
+        JLabel hint = new JLabel("Audit trail of all checkout sales and database stock deductions");
+        hint.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        hint.setForeground(MUTED);
+
+        caption.add(title, BorderLayout.WEST);
+        caption.add(hint, BorderLayout.EAST);
+        tableCard.add(caption, BorderLayout.NORTH);
+
+        setupSalesHistoryTable();
+        tableCard.add(new JScrollPane(salesHistoryTable), BorderLayout.CENTER);
+
+        // Footer
+        JPanel footer = new JPanel(new BorderLayout());
+        footer.setBackground(Color.WHITE);
+        footer.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, BORDER),
+                BorderFactory.createEmptyBorder(8, 16, 8, 16)
+        ));
+
+        salesHistorySummaryLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
+        salesHistorySummaryLabel.setForeground(TEXT);
+
+        JLabel exportNote = new JLabel("Export supports CSV spreadsheet and formatted text reports");
+        exportNote.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        exportNote.setForeground(MUTED);
+
+        footer.add(exportNote, BorderLayout.WEST);
+        footer.add(salesHistorySummaryLabel, BorderLayout.EAST);
+        tableCard.add(footer, BorderLayout.SOUTH);
+
+        panel.add(toolbar, BorderLayout.NORTH);
+        panel.add(tableCard, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private void setupSalesHistoryTable() {
+        salesHistoryTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        salesHistoryTable.setRowHeight(36);
+        salesHistoryTable.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        salesHistoryTable.setForeground(TEXT);
+        salesHistoryTable.setGridColor(BORDER);
+        salesHistoryTable.setShowVerticalLines(false);
+        salesHistoryTable.setFillsViewportHeight(true);
+        salesHistoryTable.setSelectionBackground(new Color(220, 252, 231));
+        salesHistoryTable.setSelectionForeground(GREEN);
+
+        salesHistoryTable.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 12));
+        salesHistoryTable.getTableHeader().setBackground(PALE_GREEN);
+        salesHistoryTable.getTableHeader().setForeground(GREEN);
+        salesHistoryTable.getTableHeader().setPreferredSize(new Dimension(0, 38));
+
+        int[] widths = {70, 150, 180, 110, 80, 100, 120, 180};
+        for (int i = 0; i < widths.length && i < salesHistoryTable.getColumnCount(); i++) {
+            salesHistoryTable.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
+        }
+
+        salesHistoryTable.getColumnModel().getColumn(0).setCellRenderer(new CenterRenderer());
+        salesHistoryTable.getColumnModel().getColumn(1).setCellRenderer(new CenterRenderer());
+        salesHistoryTable.getColumnModel().getColumn(3).setCellRenderer(new CategoryBadgeRenderer());
+        salesHistoryTable.getColumnModel().getColumn(4).setCellRenderer(new QuantityBadgeRenderer());
+        salesHistoryTable.getColumnModel().getColumn(5).setCellRenderer(new CurrencyRenderer());
+        salesHistoryTable.getColumnModel().getColumn(6).setCellRenderer(new CurrencyRenderer());
+    }
+
+    private void refreshSalesHistoryTable() {
+        try {
+            List<Sale> sales = service.getAllSales();
+            populateSalesTable(sales);
+        } catch (InventoryException ex) {
+            showError("Could not load sales history: " + ex.getMessage());
+        }
+    }
+
+    private void filterSalesHistory() {
+        String q = salesHistorySearchField.getText().trim();
+        try {
+            List<Sale> sales = service.searchSales(q);
+            populateSalesTable(sales);
+            status("Found " + sales.size() + " sales matching \"" + q + "\"");
+        } catch (InventoryException ex) {
+            showError("Search failed: " + ex.getMessage());
+        }
+    }
+
+    private void populateSalesTable(List<Sale> sales) {
+        salesHistoryTableModel.setRowCount(0);
+        double rev = 0;
+        int units = 0;
+        for (Sale s : sales) {
+            rev += s.getTotalAmount();
+            units += s.getQuantity();
+            salesHistoryTableModel.addRow(new Object[]{
+                    "#" + s.getId(),
+                    s.getSaleDate(),
+                    s.getProductName(),
+                    s.getCategory() == null ? "General" : s.getCategory(),
+                    s.getQuantity(),
+                    String.format("%.2f", s.getUnitPrice()),
+                    String.format("%.2f", s.getTotalAmount()),
+                    s.getNotes()
+            });
+        }
+        salesHistorySummaryLabel.setText(String.format("Showing %d orders | Total Units: %d | Revenue: Rs %.2f",
+                sales.size(), units, rev));
+    }
+
+    private void onExportSales() {
+        try {
+            List<String> paths = service.exportSalesReport();
+            String message = String.join("\n", paths);
+            status("Sales reports exported successfully");
+            JOptionPane.showMessageDialog(this,
+                    "Sales history reports generated successfully:\n\n" + message,
+                    "Export Sales Report",
+                    JOptionPane.INFORMATION_MESSAGE);
+        } catch (InventoryException ex) {
+            showError(ex.getMessage());
+        }
+    }
+
+    // =========================================================================
+    // GENERAL HELPERS & DATA BINDING
+    // =========================================================================
+    private void refreshAllData() {
+        loadTableSafe(() -> service.getAllProducts(), "System ready. Loaded all inventory items.");
+        refreshSaleProductsTable();
+        refreshSalesHistoryTable();
+        updateDashboardStats();
     }
 
     private JPanel fieldContainer(String labelText, String hintText, Component field) {
@@ -525,7 +1262,7 @@ public class InventoryFrame extends JFrame {
     }
 
     private void setupEvents() {
-        // Form buttons
+        // Inventory Form buttons
         addButton.addActionListener(e -> onAdd());
         updateButton.addActionListener(e -> onUpdate());
         deleteButton.addActionListener(e -> onDelete());
@@ -540,6 +1277,19 @@ public class InventoryFrame extends JFrame {
         };
         priceField.getDocument().addDocumentListener(calcListener);
         quantityField.getDocument().addDocumentListener(calcListener);
+
+        // Sales Form Dynamic calculation
+        DocumentListener saleCalcListener = new DocumentListener() {
+            private void update() { updateSaleCalculation(); }
+            @Override public void insertUpdate(DocumentEvent e) { update(); }
+            @Override public void removeUpdate(DocumentEvent e) { update(); }
+            @Override public void changedUpdate(DocumentEvent e) { update(); }
+        };
+        saleQtyField.getDocument().addDocumentListener(saleCalcListener);
+        saleUnitPriceField.getDocument().addDocumentListener(saleCalcListener);
+
+        completeSaleBtn.addActionListener(e -> onCompleteSale());
+        clearSaleBtn.addActionListener(e -> clearSaleForm());
 
         // Live search on keystroke
         searchField.getDocument().addDocumentListener(new DocumentListener() {
@@ -643,7 +1393,8 @@ public class InventoryFrame extends JFrame {
 
             service.addProduct(name, category, price, quantity, reorder, expiry);
             clearForm();
-            loadTableSafe(() -> service.getAllProducts(), "Product added successfully: " + name);
+            refreshAllData();
+            status("Product added successfully: " + name);
         } catch (InventoryException | NumberFormatException ex) {
             showError(ex.getMessage());
         }
@@ -673,7 +1424,8 @@ public class InventoryFrame extends JFrame {
 
             service.updateProduct(id, name, category, price, quantity, reorder, expiry);
             clearForm();
-            loadTableSafe(() -> service.getAllProducts(), "Product updated successfully (ID: " + id + ")");
+            refreshAllData();
+            status("Product updated successfully (ID: " + id + ")");
         } catch (InventoryException | NumberFormatException ex) {
             showError(ex.getMessage());
         }
@@ -696,7 +1448,8 @@ public class InventoryFrame extends JFrame {
         try {
             service.deleteProduct(id);
             clearForm();
-            loadTableSafe(() -> service.getAllProducts(), "Deleted product ID #" + id);
+            refreshAllData();
+            status("Deleted product ID #" + id);
         } catch (InventoryException ex) {
             showError(ex.getMessage());
         }
@@ -745,7 +1498,7 @@ public class InventoryFrame extends JFrame {
                 showProducts(list);
                 status((p != null) ? "Matched product ID #" + text : "No product with ID " + text);
             } catch (Exception ex) {
-                // Ignore parsing errors during typing
+                // Ignore
             }
             return;
         }
@@ -801,14 +1554,19 @@ public class InventoryFrame extends JFrame {
                 if (p.isLowStock()) lowStock++;
             }
             totalValueLabel.setText(String.format("Rs %.2f", totalValue));
-            skuCountLabel.setText(all.size() + " Items");
             lowStockCountLabel.setText(lowStock + " Alerts");
 
             showAllBtn.setCountBadge(all.size());
             lowStockBtn.setCountBadge(lowStock);
+
+            double salesRev = service.getTotalSalesRevenue();
+            int itemsSold = service.getTotalItemsSold();
+            totalRevenueLabel.setText(String.format("Rs %.2f", salesRev));
+            totalSoldLabel.setText(itemsSold + " Units");
         } catch (InventoryException ex) {
             totalValueLabel.setText("Rs 0.00");
-            skuCountLabel.setText("0 Items");
+            totalRevenueLabel.setText("Rs 0.00");
+            totalSoldLabel.setText("0 Units");
             lowStockCountLabel.setText("0 Alerts");
         }
     }
@@ -845,7 +1603,7 @@ public class InventoryFrame extends JFrame {
 
     private void showError(String message) {
         status(message);
-        JOptionPane.showMessageDialog(this, message, "Input Warning", JOptionPane.WARNING_MESSAGE);
+        JOptionPane.showMessageDialog(this, message, "Notice", JOptionPane.WARNING_MESSAGE);
     }
 
     private void status(String message) {
@@ -949,10 +1707,15 @@ public class InventoryFrame extends JFrame {
 
             try {
                 int qty = Integer.parseInt(String.valueOf(value));
-                int reorder = Integer.parseInt(String.valueOf(table.getModel().getValueAt(row, 5)));
-                if (qty <= reorder) {
-                    setForeground(WARNING);
-                    setFont(new Font("SansSerif", Font.BOLD, 13));
+                if (table.getColumnCount() >= 6) {
+                    int reorder = Integer.parseInt(String.valueOf(table.getModel().getValueAt(row, 5)));
+                    if (qty <= reorder) {
+                        setForeground(WARNING);
+                        setFont(new Font("SansSerif", Font.BOLD, 13));
+                    } else {
+                        setForeground(TEXT);
+                        setFont(new Font("SansSerif", Font.PLAIN, 13));
+                    }
                 } else {
                     setForeground(TEXT);
                     setFont(new Font("SansSerif", Font.PLAIN, 13));
@@ -961,6 +1724,28 @@ public class InventoryFrame extends JFrame {
                 setForeground(TEXT);
             }
             return this;
+        }
+    }
+
+    private static class StockStatusRenderer extends DefaultTableCellRenderer {
+        private final BadgeLabel badge = new BadgeLabel("");
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+            String status = String.valueOf(value);
+            badge.setText(status);
+            if ("Out of Stock".equalsIgnoreCase(status)) {
+                badge.setBadgeColors(new Color(254, 226, 226), new Color(220, 38, 38), new Color(252, 165, 165));
+            } else if ("Low Stock".equalsIgnoreCase(status)) {
+                badge.setBadgeColors(new Color(254, 243, 199), WARNING, new Color(252, 211, 77));
+            } else {
+                badge.setBadgeColors(new Color(236, 253, 245), ACCENT, new Color(167, 243, 208));
+            }
+            JPanel wrapper = new JPanel(new FlowLayout(FlowLayout.CENTER, 4, 6));
+            wrapper.setOpaque(true);
+            wrapper.setBackground(isSelected ? table.getSelectionBackground() : Color.WHITE);
+            wrapper.add(badge);
+            return wrapper;
         }
     }
 }

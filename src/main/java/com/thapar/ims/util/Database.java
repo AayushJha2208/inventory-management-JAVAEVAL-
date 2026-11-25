@@ -40,6 +40,20 @@ public final class Database {
                     )
                     """);
 
+            st.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS sales (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        product_id INTEGER,
+                        product_name TEXT NOT NULL,
+                        category TEXT,
+                        quantity INTEGER NOT NULL,
+                        unit_price REAL NOT NULL,
+                        total_amount REAL NOT NULL,
+                        sale_date TEXT NOT NULL,
+                        notes TEXT
+                    )
+                    """);
+
             // A few rows so the table is not empty on the first demo.
             try (var rs = st.executeQuery("SELECT COUNT(*) FROM products")) {
                 rs.next();

@@ -2,14 +2,19 @@ package com.thapar.ims.service;
 
 import com.thapar.ims.dao.ProductDao;
 import com.thapar.ims.dao.ProductDaoImpl;
+import com.thapar.ims.dao.SaleDao;
+import com.thapar.ims.dao.SaleDaoImpl;
 import com.thapar.ims.exception.InventoryException;
 import com.thapar.ims.model.PerishableProduct;
 import com.thapar.ims.model.Product;
+import com.thapar.ims.model.Sale;
 import com.thapar.ims.util.AppLogger;
 import com.thapar.ims.util.ReportWriter;
 
 import java.io.IOException;
 import java.sql.SQLException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -27,6 +32,7 @@ public class InventoryServiceImpl implements InventoryService {
     private static final Logger LOG = AppLogger.get(InventoryServiceImpl.class);
 
     private final ProductDao dao = new ProductDaoImpl();
+    private final SaleDao saleDao = new SaleDaoImpl();
     private final Map<Integer, Product> byId = new HashMap<>();
 
     public InventoryServiceImpl() throws InventoryException {
@@ -129,6 +135,113 @@ public class InventoryServiceImpl implements InventoryService {
         } catch (IOException ex) {
             LOG.log(Level.SEVERE, "Report export failed", ex);
             throw new InventoryException("Could not write the report file.", ex);
+        }
+    }
+
+    // --- Sales Tracking Implementation ---
+
+    @Override
+    public Sale recordSale(int productId, int quantity, double unitPrice, String notes, boolean removeIfZero) throws InventoryException {
+        if (quantity <= 0) {
+            throw new InventoryException("Sale quantity must be at least 1.");
+        }
+        if (unitPrice < 0) {
+            throw new InventoryException("Sale price cannot be negative.");
+        }
+
+        Product product = searchById(productId);
+        if (product == null) {
+            throw new InventoryException("Product not found (ID: " + productId + ").");
+        }
+
+        if (product.getQuantity() < quantity) {
+            throw new InventoryException("Insufficient stock for \"" + product.getName()
+                    + "\". Available: " + product.getQuantity() + ", Requested: " + quantity);
+        }
+
+        int remainingStock = product.getQuantity() - quantity;
+        double totalAmount = quantity * unitPrice;
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+
+        Sale sale = new Sale(0, productId, product.getName(), product.getCategory(), quantity, unitPrice, totalAmount, timestamp, notes);
+
+        try {
+            // 1. Deduct or remove from products database
+            if (removeIfZero && remainingStock == 0) {
+                dao.delete(productId);
+                LOG.info("Product #" + productId + " (" + product.getName() + ") was completely sold out and removed from catalog.");
+            } else {
+                product.setQuantity(remainingStock);
+                dao.update(product);
+                LOG.info("Deducted " + quantity + " units of product #" + productId + ". Remaining stock: " + remainingStock);
+            }
+            refreshCache();
+
+            // 2. Insert sales transaction record
+            saleDao.insert(sale);
+            LOG.info("Recorded sale #" + sale.getId() + " (" + sale.getProductName() + ", qty=" + quantity + ", total=Rs " + totalAmount + ")");
+            return sale;
+        } catch (SQLException ex) {
+            throw databaseError("Failed to process sale transaction.", ex);
+        }
+    }
+
+    @Override
+    public List<Sale> getAllSales() throws InventoryException {
+        try {
+            return saleDao.findAll();
+        } catch (SQLException ex) {
+            throw databaseError("Could not retrieve sales history.", ex);
+        }
+    }
+
+    @Override
+    public List<Sale> searchSales(String text) throws InventoryException {
+        String query = (text == null ? "" : text.trim()).toLowerCase();
+        List<Sale> all = getAllSales();
+        if (query.isEmpty()) {
+            return all;
+        }
+        List<Sale> filtered = new ArrayList<>();
+        for (Sale s : all) {
+            if (String.valueOf(s.getId()).equals(query)
+                    || s.getProductName().toLowerCase().contains(query)
+                    || (s.getCategory() != null && s.getCategory().toLowerCase().contains(query))
+                    || s.getNotes().toLowerCase().contains(query)
+                    || s.getSaleDate().contains(query)) {
+                filtered.add(s);
+            }
+        }
+        return filtered;
+    }
+
+    @Override
+    public double getTotalSalesRevenue() throws InventoryException {
+        try {
+            return saleDao.getTotalRevenue();
+        } catch (SQLException ex) {
+            throw databaseError("Could not calculate total revenue.", ex);
+        }
+    }
+
+    @Override
+    public int getTotalItemsSold() throws InventoryException {
+        try {
+            return saleDao.getTotalQuantitySold();
+        } catch (SQLException ex) {
+            throw databaseError("Could not calculate items sold.", ex);
+        }
+    }
+
+    @Override
+    public List<String> exportSalesReport() throws InventoryException {
+        try {
+            List<String> paths = ReportWriter.writeSalesReport(getAllSales());
+            LOG.info("Exported sales reports to " + paths);
+            return paths;
+        } catch (IOException ex) {
+            LOG.log(Level.SEVERE, "Sales report export failed", ex);
+            throw new InventoryException("Could not write sales report file.", ex);
         }
     }
 
