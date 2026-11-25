@@ -3,7 +3,6 @@ package com.thapar.ims.ui;
 import com.thapar.ims.exception.InventoryException;
 import com.thapar.ims.model.Product;
 import com.thapar.ims.service.InventoryService;
-import com.thapar.ims.web.WebServer;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -24,7 +23,6 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
-import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -196,19 +194,13 @@ public class InventoryFrame extends JFrame {
         brand.add(titleBlock);
         header.add(brand, BorderLayout.WEST);
 
-        // Stats & Web Link on Right
+        // Stats on Right
         JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
         rightPanel.setOpaque(false);
 
         rightPanel.add(statCard("TOTAL VALUE", totalValueLabel, GREEN, PALE_GREEN));
         rightPanel.add(statCard("SKU COUNT", skuCountLabel, ACCENT, new Color(236, 253, 245)));
         rightPanel.add(statCard("LOW STOCK", lowStockCountLabel, WARNING, new Color(255, 251, 235)));
-
-        // Browser Web View Button
-        ModernButton webBtn = new ModernButton("Web Dashboard", ModernButton.Variant.SECONDARY);
-        webBtn.setToolTipText("Open the HTML Web Dashboard in your browser");
-        webBtn.addActionListener(e -> openWebDashboard());
-        rightPanel.add(webBtn);
 
         header.add(rightPanel, BorderLayout.EAST);
         return header;
@@ -771,23 +763,6 @@ public class InventoryFrame extends JFrame {
                     JOptionPane.INFORMATION_MESSAGE);
         } catch (InventoryException ex) {
             showError(ex.getMessage());
-        }
-    }
-
-    private void openWebDashboard() {
-        int port = WebServer.getPort();
-        if (port > 0) {
-            try {
-                Desktop.getDesktop().browse(new URI("http://localhost:" + port));
-                status("Opened Web Dashboard at http://localhost:" + port);
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this,
-                        "Web Dashboard running at:\nhttp://localhost:" + port + "\n\nOpen this URL in your web browser.",
-                        "Web Dashboard",
-                        JOptionPane.INFORMATION_MESSAGE);
-            }
-        } else {
-            showError("Web Server is not running.");
         }
     }
 

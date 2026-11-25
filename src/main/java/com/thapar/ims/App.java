@@ -7,7 +7,6 @@ import com.thapar.ims.service.InventoryServiceImpl;
 import com.thapar.ims.ui.InventoryFrame;
 import com.thapar.ims.util.AppLogger;
 import com.thapar.ims.util.Database;
-import com.thapar.ims.web.WebServer;
 
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
@@ -32,12 +31,6 @@ public class App {
             if (args.length > 0 && "check".equals(args[0])) {
                 runCheck(service);
                 return;
-            }
-            if (java.util.Arrays.asList(args).contains("--web")) {
-                int port = WebServer.start(service, 8080);
-                if (port > 0) {
-                    LOG.info("Web dashboard available at http://localhost:" + port);
-                }
             }
             SwingUtilities.invokeLater(() -> new InventoryFrame(service).setVisible(true));
         } catch (Exception ex) {

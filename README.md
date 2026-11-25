@@ -1,6 +1,6 @@
 # Inventory Management System
 
-Desktop stock register for a shop. Add, update, delete, search, see low stock, and export reports. The project also contains an optional web version; the packaged macOS app launches the Swing desktop interface.
+Desktop stock register for a shop. Add, update, delete, search, see low stock, and export reports. The packaged macOS app launches the Swing desktop interface.
 
 ## Run
 
@@ -13,8 +13,6 @@ mvn -q compile exec:java
 Or double-click `run.bat`.
 
 The window opens with five sample products. Milk and Rice are already low on stock.
-
-The optional web dashboard can also be started alongside the desktop window with `mvn -q compile exec:java -Dexec.args=--web` and opened at `http://localhost:8080`.
 
 Data file: `data/inventory.db`  
 Log file: `logs/app.log`  
